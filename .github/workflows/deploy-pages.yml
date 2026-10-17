@@ -1,0 +1,85 @@
+# Publish the public static site to GitHub Pages.
+# The uploaded artifact is only index.html plus co-located static assets.
+# README, LICENSE, and other repository internals are not published.
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One production deployment at a time. Do not cancel a deploy that is
+# already in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Read Pages metadata only. enablement stays false so this job
+      # does not create or change the repository Pages setting.
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+        with:
+          enablement: "false"
+
+      - name: Stage public site
+        run: |
+          set -eu
+          mkdir -p _site
+          cp index.html _site/index.html
+          # Needed static assets only, and only when they exist.
+          for asset in \
+            assets \
+            static \
+            public \
+            css \
+            js \
+            images \
+            img \
+            fonts \
+            media \
+            favicon.ico \
+            favicon.svg \
+            apple-touch-icon.png \
+            robots.txt \
+            site.webmanifest \
+            manifest.webmanifest \
+            manifest.json
+          do
+            if [ -e "$asset" ]; then
+              cp -a "$asset" "_site/$asset"
+            fi
+          done
+          for forbidden in README.md LICENSE .github .agentropolis .git; do
+            if [ -e "_site/$forbidden" ]; then
+              echo "refusing to publish repository internal: $forbidden" >&2
+              exit 1
+            fi
+          done
+          test -f _site/index.html
+          echo "Pages artifact contents:"
+          find _site -type f | sort
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
